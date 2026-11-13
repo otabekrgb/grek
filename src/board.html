@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="marble">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Шахматы против grek</title>
+<style>
+:root {
+  --paper: #f4f1ea;
+  --paper-2: #ebe7dc;
+  --ink: #191816;
+  --ink-2: #403d37;
+  --muted: #7d7669;
+  --line: #d8d2c3;
+  --line-2: #b3ab9a;
+  --light: #e9e9e7;
+  --dark: #767b82;
+  --hl: rgba(25, 24, 22, .10);
+  --hl-sel: rgba(25, 24, 22, .20);
+  --hint: rgba(25, 24, 22, .16);
+  --pad-l: 26px; --pad-r: 12px; --pad-t: 12px; --pad-b: 26px;
+  --panel-w: 340px;
+  --bs: min(calc(100vw - var(--panel-w) - 180px), 540px);
+}
+html[data-theme="marble"]  { --light: #e9e9e7; --dark: #767b82; }
+html[data-theme="wood"]    { --light: #e7d7b4; --dark: #9a6c47; }
+html[data-theme="night"]   { --light: #bac5db; --dark: #485877; }
+html[data-theme="emerald"] { --light: #e6e1cb; --dark: #57856e; }
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font: 15px/1.5 "Segoe UI", system-ui, Roboto, sans-serif;
+  background:
+    radial-gradient(1100px 520px at 50% -8%, #fbf9f4, transparent 70%),
+    var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- шапка-журнал ---------- */
+.mast { position: relative; background: #151413 url("/img/bg.jpg") center 42% / cover no-repeat; }
+.mast::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(12, 11, 10, .18) 0%, rgba(12, 11, 10, .74) 100%);
+}
+.mast-inner {
+  position: relative; z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 46px 32px 26px;
+  color: #f5f2ea;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+}
+.kicker {
+  font-size: 10.5px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: rgba(245, 242, 234, .72);
+  margin-bottom: 14px;
+}
+.headline {
+  margin: 0;
+  font: 500 clamp(34px, 5vw, 62px)/1.02 Georgia, "Times New Roman", serif;
+  letter-spacing: .4px;
+}
+.lede { margin: 12px 0 0; font-size: 14.5px; color: rgba(245, 242, 234, .76); max-width: 560px; }
+.mast-meta {
+  text-align: right;
+  font: 11.5px/1.8 ui-monospace, Consolas, monospace;
+  color: rgba(245, 242, 234, .68);
+  white-space: nowrap;
+  padding-bottom: 4px;
+}
+.mast-meta b { display: block; font-weight: 500; color: rgba(245, 242, 234, .9); }
+
+.app {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 52px;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 34px 32px 72px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+.stage { display: flex; align-items: flex-start; }
+.boardcol { width: calc(var(--bs) + var(--pad-l) + var(--pad-r)); flex: none; }
+
+/* ---------- игроки ---------- */
+.pcard { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 2px; }
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex: none; overflow: hidden;
+  display: grid; place-items: center;
+  background: #fbf9f4;
+  box-shadow: inset 0 0 0 1px var(--line-2), 0 2px 6px rgba(35, 30, 20, .12);
+}
+.avatar svg { width: 30px; height: 30px; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.pinfo { flex: 1; min-width: 0; }
+.pname { font-weight: 650; display: flex; gap: 8px; align-items: baseline; letter-spacing: .1px; }
+.think { color: var(--muted); font-weight: 500; font-size: 12px; font-style: italic; }
+.caps { display: flex; align-items: center; min-height: 18px; font-size: 12px; color: var(--muted); }
+.caps svg { width: 18px; height: 18px; margin-right: -8px; }
+.caps .pb { --stroke: var(--muted); }
+.caps .grp { display: inline-flex; margin-right: 12px; }
+.caps b { margin-left: 4px; color: var(--ink); font-weight: 600; }
+.clock {
+  font: 600 19px/1 ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  padding: 7px 2px;
+  min-width: 88px;
+  text-align: right;
+  transition: color .2s, opacity .2s;
+}
+.clock.active { color: var(--ink); }
+.clock.low { color: #8e2f1f; }
+.clock.active.low { color: #6f2013; }
+.clock.hidden { visibility: hidden; }
+
+/* ---------- доска ---------- */
+#frame {
+  position: relative;
+  padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
+  border-radius: 3px;
+  background: #fbf9f4;
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 44px rgba(45, 38, 24, .13), 0 2px 0 rgba(255, 255, 255, .8) inset;
+}
+#boardwrap { position: relative; width: var(--bs); height: var(--bs); }
+#board {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  border-radius: 2px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  box-shadow: 0 0 0 1px rgba(25, 24, 22, .35);
+}
+.ranks, .files {
+  position: absolute;
+  display: flex;
+  color: var(--muted);
+  font: 600 10.5px/1 ui-monospace, Consolas, monospace;
+  letter-spacing: .04em;
+  pointer-events: none;
+}
+.ranks { left: 0; top: var(--pad-t); width: var(--pad-l); height: var(--bs); flex-direction: column; }
+.ranks span { flex: 1; display: grid; place-items: center; }
+.files { left: var(--pad-l); bottom: 0; width: var(--bs); height: var(--pad-b); }
+.files span { flex: 1; display: grid; place-items: center; }
+
+.sq { position: relative; }
+.sq.l { background: var(--light); }
+.sq.d { background: var(--dark); }
+.sq .piece { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .28)); }
+.sq.mine .piece { cursor: grab; }
+.sq.last::before, .sq.sel::before, .sq.hint::before { content: ""; position: absolute; inset: 0; z-index: 1; }
+.sq.last::before { background: var(--hl); }
+.sq.sel::before { background: var(--hl-sel); box-shadow: inset 0 0 0 2px rgba(25, 24, 22, .55); }
+.sq.hint::before { background: var(--hint); }
+.sq.chk::after {
+  content: ""; position: absolute; inset: 0; z-index: 2;
+  background: radial-gradient(circle, rgba(25, 24, 22, .56) 0%, rgba(25, 24, 22, .26) 42%, rgba(25, 24, 22, 0) 74%);
+  box-shadow: inset 0 0 0 2px rgba(25, 24, 22, .65);
+}
+.mdot { position: absolute; left: 50%; top: 50%; width: 28%; height: 28%; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(25, 24, 22, .26); z-index: 4; pointer-events: none; }
+.sq.cap .mdot { width: 100%; height: 100%; border-radius: 0; background: radial-gradient(circle, rgba(0, 0, 0, 0) 60%, rgba(25, 24, 22, .30) 62%); }
+.piece.dragsrc { opacity: .22; }
+.ghost { position: fixed; z-index: 1000; pointer-events: none; }
+.ghost svg { width: 100%; height: 100%; filter: drop-shadow(0 8px 8px rgba(0, 0, 0, .35)); }
+#arrows { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 6; pointer-events: none; }
+
+.evalbar {
+  position: absolute;
+  left: -34px;
+  top: var(--pad-t);
+  width: 20px;
+  height: var(--bs);
+  background: var(--paper-2);
+  border-radius: 1px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.evalw { position: absolute; left: 0; right: 0; bottom: 0; height: 50%; background: var(--ink); transition: height .5s ease; }
+.evalbar.flip .evalw { bottom: auto; top: 0; }
+.evallabel { position: absolute; left: 0; right: 0; text-align: center; font: 800 8px/1 ui-monospace, Consolas, monospace; padding: 4px 0; z-index: 2; letter-spacing: -.04em; }
+.evallabel.atbottom { bottom: 0; color: #f7f4ed; }
+.evallabel.attop { top: 0; color: var(--ink); }
+
+/* ---------- фигуры ---------- */
+.pw { --fill: #ffffff; --stroke: #000000; --detail: #000000; }
+.pb { --fill: #1c1c1c; --stroke: #000000; --detail: #ececec; }
+.m { fill: var(--fill); stroke: var(--stroke); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.m.bt { stroke-linecap: butt; }
+.m.mt { stroke-linejoin: miter; }
+.dt { fill: none; stroke: var(--detail); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.dt.mt { stroke-linejoin: miter; }
+.ln { fill: none; stroke: var(--stroke); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: miter; }
+.df { fill: var(--detail); stroke: var(--detail); stroke-width: 1.5; }
+.df.ns { stroke: none; }
+.pw .bonly { display: none; }
+
+/* ---------- модалки на доске ---------- */
+.modal {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(25, 24, 22, .38);
+  backdrop-filter: blur(3px);
+  border-radius: 2px;
+}
+.modal[hidden] { display: none; }
+.promo {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 3px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .25);
+}
+.promo button {
+  width: calc(var(--bs) / 8 * 1.12);
+  height: calc(var(--bs) / 8 * 1.12);
+  padding: 0;
+  border-radius: 2px;
+  background: var(--light);
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.promo button:hover { border-color: var(--ink); }
+.promo svg { width: 100%; height: 100%; }
+.result {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 28px 32px;
+  text-align: center;
+  min-width: 300px;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, .35);
+}
+.result h2 { margin: 0 0 6px; font: 600 32px/1.15 Georgia, "Times New Roman", serif; color: var(--ink); }
+.result p { margin: 0 0 20px; color: var(--ink-2); }
+.result .row { display: flex; gap: 10px; }
+.result .row > * { flex: 1; white-space: nowrap; }
+
+/* ---------- панель ---------- */
+.panel {
+  width: var(--panel-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.brand {
+  position: relative;
+  display: flex; align-items: flex-end; gap: 12px;
+  height: 150px;
+  padding: 14px;
+  border-radius: 2px;
+  color: #f5f2ea;
+  background:
+    linear-gradient(180deg, rgba(10, 9, 8, .06) 0%, rgba(10, 9, 8, .42) 46%, rgba(10, 9, 8, .82) 100%),
+    url("/img/ultron.jpg") 62% 18% / cover no-repeat;
+  overflow: hidden;
+}
+.brand svg {
+  width: 30px; height: 30px; flex: none; padding: 3px; border-radius: 2px;
+  background: rgba(0, 0, 0, .38);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4);
+  backdrop-filter: blur(3px);
+}
+.brand.neo {
+  background:
+    linear-gradient(180deg, rgba(10, 9, 8, .06) 0%, rgba(10, 9, 8, .42) 46%, rgba(10, 9, 8, .82) 100%),
+    url("/img/neo.jpg") 50% 22% / cover no-repeat;
+}
+h1 { margin: 0; font: 600 26px/1 Georgia, "Times New Roman", serif; letter-spacing: .5px; color: #f5f2ea; }
+.sub { color: rgba(245, 242, 234, .74); font-size: 10px; margin-top: 4px; letter-spacing: .18em; text-transform: uppercase; }
+#statusbox { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; min-height: 22px; }
+.dotc { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); flex: none; }
+.dotc.eng { background: var(--muted); animation: pulse 1.1s ease-in-out infinite; }
+.dotc.over { background: var(--line-2); }
+@keyframes pulse { 50% { opacity: .3; } }
+
+.trashbox {
+  font: italic 16px/1.5 Georgia, "Times New Roman", serif;
+  color: var(--ink-2);
+  padding: 1px 0 1px 14px;
+  border-left: 2px solid var(--ink);
+  animation: fadein .25s ease;
+}
+@keyframes fadein { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+.rookmeme {
+  position: fixed;
+  top: 16%;
+  left: 50%;
+  transform: translateX(-50%) scale(.8);
+  background: var(--ink);
+  color: var(--paper);
+  font: 700 38px/1 Georgia, serif;
+  padding: 18px 34px;
+  border-radius: 2px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .35);
+  z-index: 2000;
+  pointer-events: none;
+  animation: rookpop 1.6s ease forwards;
+  letter-spacing: 3px;
+  white-space: nowrap;
+}
+@keyframes rookpop {
+  0%   { opacity: 0; transform: translateX(-50%) scale(.5) rotate(-6deg); }
+  20%  { opacity: 1; transform: translateX(-50%) scale(1.12) rotate(2deg); }
+  70%  { opacity: 1; transform: translateX(-50%) scale(1) rotate(0); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.16); }
+}
+
+/* ---------- настройки ---------- */
+.settings { display: flex; flex-direction: column; border-top: 2px solid var(--ink); }
+label.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  font-size: 10.5px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+label.row select { width: 164px; text-transform: none; letter-spacing: 0; text-align: right; }
+.toggles { display: flex; flex-direction: column; gap: 10px; }
+label.check { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--ink); }
+input[type="checkbox"] { accent-color: var(--ink); width: 15px; height: 15px; }
+
+select, button { font: inherit; color: var(--ink); }
+select {
+  cursor: pointer;
+  padding: 4px 2px;
+  font-size: 13.5px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  transition: border-color .16s;
+}
+select:hover { border-bottom-color: var(--line-2); }
+select:focus-visible, button:focus-visible { outline: 2px solid rgba(25, 24, 22, .45); outline-offset: 2px; }
+button {
+  cursor: pointer;
+  padding: 11px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  background: transparent;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  transition: background .16s, border-color .16s, color .16s;
+}
+button:hover:not(:disabled) { background: rgba(25, 24, 22, .06); border-color: var(--ink); }
+button:disabled { opacity: .35; cursor: default; }
+button.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #f7f4ed;
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) { background: #2f2c27; border-color: #2f2c27; }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.btns .wide { grid-column: 1 / -1; }
+
+/* ---------- ходы ---------- */
+.moves-wrap { display: flex; flex-direction: column; }
+.moves-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--ink);
+}
+#moves {
+  max-height: 224px;
+  min-height: 68px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 34px 1fr 1fr;
+  align-content: start;
+  font: 13px/1.6 ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  padding-right: 4px;
+}
+#moves span { padding: 2px 6px; }
+#moves .n { color: var(--muted); padding-right: 0; }
+#moves .cur { font-weight: 700; background: var(--paper-2); }
+#moves .empty { grid-column: 1 / -1; color: var(--muted); font-family: inherit; font-size: 13px; font-style: italic; }
+#moves::-webkit-scrollbar { width: 7px; }
+#moves::-webkit-scrollbar-thumb { background: rgba(25, 24, 22, .22); border-radius: 8px; }
+#moves::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- архив и разбор ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  padding: 26px;
+  background: rgba(25, 24, 22, .42);
+  backdrop-filter: blur(3px);
+}
+.overlay[hidden] { display: none; }
+.sheet {
+  width: min(880px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .32);
+  padding: 26px 32px 34px;
+}
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 12px;
+  border-bottom: 3px solid var(--ink);
+}
+.sheet h2 { margin: 4px 0 0; font: 600 30px/1.1 Georgia, "Times New Roman", serif; }
+.kicker2 { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
+.x {
+  background: none; border: 0; padding: 0 2px;
+  font: 400 30px/1 Georgia, serif; color: var(--ink); cursor: pointer;
+}
+.x:hover { background: none; }
+.grow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 18px;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.grow .who { font-weight: 600; }
+.grow .who i { font-style: normal; color: var(--muted); font-weight: 400; }
+.grow .when { font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--muted); }
+.grow .out { font-size: 13px; letter-spacing: .02em; }
+.grow .out b { font-weight: 700; }
+.btn-link {
+  background: none; border: 0; border-bottom: 1px solid var(--ink); border-radius: 0;
+  padding: 2px 0; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer;
+}
+.btn-link:hover { background: none; }
+.note { color: var(--muted); font-size: 13px; font-style: italic; }
+.loading { padding: 60px 0; text-align: center; color: var(--muted); font-style: italic; }
+.ana-head {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 20px;
+  padding: 18px 0 14px;
+  border-bottom: 1px solid var(--line-2);
+}
+.acc-num { font: 600 48px/1 Georgia, serif; text-align: right; }
+.acc-num span { display: block; font: 10px/1.4 "Segoe UI", sans-serif; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--ink); }
+.stat { padding: 14px 0 12px; }
+.stat b { display: block; font: 600 26px/1 Georgia, serif; }
+.stat span { font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.graph { width: 100%; height: 110px; margin: 16px 0 4px; display: block; }
+.ana-head2 { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); }
+.ana-head2 span { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+.ana-list { max-height: 290px; overflow-y: auto; }
+.ana-row {
+  display: grid;
+  grid-template-columns: 46px 64px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  font: 13px/1.5 ui-monospace, Consolas, monospace;
+}
+.ana-row .num { color: var(--muted); }
+.ana-row .san { font-weight: 600; }
+.ana-row .alt { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ana-row .loss { color: var(--muted); font-size: 12px; }
+.tag {
+  font: 600 9.5px/1.7 "Segoe UI", sans-serif;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border: 1px solid var(--line-2);
+  padding: 0 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.tag.good { border-color: transparent; color: var(--muted); padding: 0; }
+.tag.best { border-color: transparent; padding: 0; }
+.tag.inaccuracy { border-style: dashed; }
+.tag.mistake { border-color: var(--ink); }
+.tag.blunder { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.ana-row .right { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.elo-line { margin-top: 14px; font-size: 15px; color: var(--ink-2); }
+.elo-line b { font: 600 20px/1 Georgia, "Times New Roman", serif; color: var(--ink); }
+.elo-line span { display: block; margin-top: 6px; font-size: 11px; color: var(--muted); font-style: italic; }
+.ana-actions { display: flex; gap: 22px; align-items: center; justify-content: flex-end; margin-top: 24px; }
+.ana-actions .note { margin-right: auto; }
+
+@media (max-width: 1120px) {
+  :root { --bs: min(calc(100vw - 80px), 560px); }
+  .mast-inner { padding: 34px 22px 22px; flex-direction: column; align-items: flex-start; gap: 14px; }
+  .mast-meta { text-align: left; }
+  .app { padding: 24px 20px 56px; gap: 30px; }
+  .panel { width: min(100%, 560px); }
+  .evalbar { left: -30px; width: 18px; }
+  .sheet { padding: 20px; }
+  .grow { grid-template-columns: minmax(0, 1fr) auto; }
+  .grow .when { grid-column: 1 / -1; grid-row: 2; }
+  .grow .out { grid-column: 1; grid-row: 3; }
+  .grow .btn-link { grid-column: 2; grid-row: 3; justify-self: end; }
+}
+
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="mast-inner">
+    <div>
+      <div class="kicker">Шахматы · движок · один на один</div>
+      <h1 class="headline">Партия против машины</h1>
+      <p class="lede">grek считает быстрее, чем вы сомневаетесь. neo ошибается — но реже, чем кажется.</p>
+    </div>
+    <div class="mast-meta" id="mastMeta"></div>
+  </div>
+</header>
+<div class="app">
+  <div class="stage">
+    <div class="boardcol">
+      <div class="pcard" id="topCard"></div>
+      <div id="frame">
+        <div class="evalbar" id="evalbar"><div class="evalw" id="evalw"></div><div class="evallabel atbottom" id="evallabel">0.0</div></div>
+        <div class="ranks" id="ranks"></div>
+        <div id="boardwrap">
+          <div id="board"></div>
+          <svg id="arrows" viewBox="0 0 8 8"></svg>
+          <div class="modal" id="promoModal" hidden><div class="promo" id="promo"></div></div>
+          <div class="modal" id="resultModal" hidden>
+            <div class="result">
+              <h2 id="resTitle"></h2>
+              <p id="resText"></p>
+              <div class="row"><button class="primary" id="resNew">Новая игра</button><button id="resClose">Закрыть</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="files" id="files"></div>
+      </div>
+      <div class="pcard" id="botCard"></div>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <div class="brand" id="brandCard"><span id="brandIcon"></span><div><h1 id="brandName">grek</h1><div class="sub" id="brandSub">шахматный движок · ≈ 2300</div></div></div>
+    <div id="statusbox"><i class="dotc" id="statusdot"></i><span id="status">Загрузка…</span></div>
+    <div id="trashbox" class="trashbox" hidden></div>
+    <div class="settings">
+      <label class="row">Соперник
+        <select id="opp">
+          <option value="grek">grek · сильный</option>
+          <option value="neo">neo · слабее</option>
+        </select>
+      </label>
+      <label class="row">Ваш цвет
+        <select id="color">
+          <option value="w">Белые</option>
+          <option value="b">Чёрные</option>
+          <option value="r">Случайно</option>
+        </select>
+      </label>
+      <label class="row">Часы
+        <select id="tc">
+          <option value="0">Без часов</option>
+          <option value="1+0">1 мин</option>
+          <option value="3+0">3 мин</option>
+          <option value="3+2">3 мин + 2 с</option>
+          <option value="5+0">5 мин</option>
+          <option value="10+0">10 мин</option>
+          <option value="15+10">15 мин + 10 с</option>
+        </select>
+      </label>
+      <label class="row">Движок на ход
+        <select id="ems">
+          <option value="300">0,3 с</option>
+          <option value="1000" selected>1 с</option>
+          <option value="3000">3 с</option>
+          <option value="5000">5 с</option>
+          <option value="10000">10 с</option>
+        </select>
+      </label>
+      <label class="row">Тема доски
+        <select id="theme">
+          <option value="wood">Дерево</option>
+          <option value="marble">Мрамор</option>
+          <option value="night">Ночь</option>
+          <option value="emerald">Изумруд</option>
+        </select>
+      </label>
+    </div>
+    <div class="toggles">
+      <label class="check"><input type="checkbox" id="sound" checked> Звук</label>
+      <label class="check"><input type="checkbox" id="voice" checked> Голос grek'а (Альтрон)</label>
+    </div>
+    <div class="btns">
+      <button class="primary wide" id="new">Новая игра</button>
+      <button id="hintBtn">Подсказка</button>
+      <button id="undo">Отменить ход</button>
+      <button id="flip" class="wide">Перевернуть доску</button>
+      <button id="archiveBtn" class="wide">Архив партий</button>
+    </div>
+    <div class="moves-wrap">
+      <div class="moves-head">Партия</div>
+      <div id="moves"></div>
+    </div>
+  </aside>
+</div>
+
+<div class="overlay" id="archiveModal" hidden>
+  <div class="sheet" id="archiveSheet"></div>
+</div>
+
+<script>
+const PIECES_SVG = {
+  p: `<path class="m" d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z"/>`,
+  r: `<path class="m bt" d="M9 39h27v-3H9v3zM12 36v-4h21v4H12zM11 14V9h4v2h5V9h5v2h5V9h4v5"/>
+      <path class="m" d="M34 14l-3 3H14l-3-3"/>
+      <path class="m bt mt" d="M31 17v12.5H14V17"/>
+      <path class="m" d="M31 29.5l1.5 2.5h-20l1.5-2.5"/>
+      <path class="dt mt" d="M11 14h23"/>
+      <path class="dt mt bonly" d="M12 35.5h21M13 31.5h19M14 29.5h17M14 16.5h17"/>`,
+  n: `<path class="m" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"/>
+      <path class="m" d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3"/>
+      <path class="df" d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zm5.433-9.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5z"/>
+      <path class="df ns bonly" d="M24.55 10.4l-.45 1.45.5.15c3.15 1 5.65 2.49 7.9 6.75S35.75 29.06 35.25 39l-.05.5h2.25l.05-.5c.5-10.06-.88-16.85-3.25-21.34-2.37-4.49-5.79-6.64-9.19-7.16l-.51-.1z"/>`,
+  b: `<path class="m bt" d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/>
+      <path class="m bt" d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/>
+      <path class="m bt" d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/>
+      <path class="dt mt" d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5"/>`,
+  q: `<path class="m" d="M8 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM24.5 7.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM16 8.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM33 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0z"/>
+      <path class="m bt" d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11V11l-5.5 13.5-3-15-3 15-5.5-14V25L7 14l2 12z"/>
+      <path class="m bt" d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/>
+      <path class="dt" d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c6-1 15-1 21 0"/>`,
+  k: `<path class="ln" d="M22.5 11.63V6M20 8h5"/>
+      <path class="m bt mt" d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"/>
+      <path class="m" d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10V37z"/>
+      <path class="dt" d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/>`
+};
+
+(function () {
+  "use strict";
+  var FILES = "abcdefgh";
+  var START = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+  var VAL = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+  var ORDER = ["q", "r", "b", "n", "p"];
+
+  var me = "w", flipped = false;
+  var state = null, states = [];
+  var sel = null, hint = null, hintTimer = null;
+  var busy = false, engineThinking = false, gameId = 0;
+  var opp = "grek", gameKey = 0, savedGame = -1;
+  var evalCp = 0;
+  var clocks = { w: 0, b: 0 }, inc = 0, clockOn = false, lastTick = null, timeout = null;
+  var resultDismissed = false, resultSaid = -1;
+  var drag = null, promoPending = null;
+  var soundOn = true, voiceOn = true;
+  var hosted = false;
+  var cfg = fetch("/config").then(function (r) { return r.json(); })
+    .then(function (c) { hosted = !!c.hosted; }).catch(function () {});
+
+  function $(id) { return document.getElementById(id); }
+  function store(k, v) { try { localStorage.setItem("chess." + k, v); } catch (e) {} }
+  function load(k, d) { try { var v = localStorage.getItem("chess." + k); return v === null ? d : v; } catch (e) { return d; } }
+
+  /* ---------- звук ---------- */
+  var actx = null;
+  function beep(freq, dur, vol) {
+    if (!soundOn) { return; }
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.type = "triangle"; o.frequency.value = freq; g.gain.value = vol || 0.09;
+      o.connect(g); g.connect(actx.destination);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur); o.stop(actx.currentTime + dur);
+    } catch (e) {}
+  }
+
+  /* ---------- озвучка grek'а (голос Альтрона) ---------- */
+  /* Один <audio> на всё: два файла физически не могут играть одновременно.
+     Реплика с более высоким приоритетом перебивает текущую (но не раньше 1.2 с),
+     равная или низкая — отбрасывается, чтобы не копился хвост из старых фраз.
+     pri: 4 — финал партии, 3 — рокировка/новая игра, 2 — шах/взятие, 1 — трэш-ток.
+     force — играть обязательно: финальная фраза не отменяется ничем. */
+  var voicePlaying = false;
+  var voicePri = 0;
+  var voiceStart = 0;
+  var voiceEl = new Audio();
+  voiceEl.preload = "auto";
+  voiceEl.onended = voiceEl.onerror = function () { voicePlaying = false; voicePri = 0; };
+
+  function voice(file, pri, force) {
+    if (!voiceOn || !file) { return; }
+    pri = pri || 1;
+    if (voicePlaying) {
+      if (!force && (pri <= voicePri || Date.now() - voiceStart < 1200)) { return; }
+      stopVoice();
+    }
+    voicePlaying = true;
+    voicePri = pri;
+    voiceStart = Date.now();
+    voiceEl.src = "/voice/" + file;
+    voiceEl.play().catch(function () { voicePlaying = false; voicePri = 0; });
+  }
+  function stopVoice() {
+    voicePlaying = false;
+    voicePri = 0;
+    try { voiceEl.pause(); } catch (e) {}
+  }
+  /* ротация по кругу, чтобы звучали все записанные варианты, а не 1-2 случайных */
+  function nextLine(prefix, n, key) {
+    var i = Number(load(key, "0")) % n;
+    store(key, String((i + 1) % n));
+    return prefix + i + ".wav";
+  }
+  function sayRook() {
+    if (!voiceOn) { return; }
+    voice("rook.wav", 3);
+  }
+  function reactCheck() { return nextLine("check", 3, "chkIdx"); }
+  function reactCapture() { return nextLine("capture", 4, "capIdx"); }
+
+  /* ---------- API ---------- */
+  async function api(moves, o) {
+    o = o || {};
+    var url = "/api?moves=" + moves.join(",") + "&ms=" + Math.round(o.ms || 1000) +
+      "&engine=" + (o.engine ? 1 : 0) + "&hint=" + (o.hint ? 1 : 0) + "&opp=" + opp;
+    var r = await fetch(url, { cache: "no-store" });
+    var data = await r.json();
+    if (data.error) { throw new Error(data.error); }
+    return data;
+  }
+
+  /* ---------- доска ---------- */
+  function parseBoard(p) {
+    return p.split("/").map(function (row) {
+      var out = [];
+      for (var i = 0; i < row.length; i++) {
+        var ch = row[i];
+        if (ch >= "1" && ch <= "8") { for (var k = 0; k < Number(ch); k++) { out.push(""); } } else { out.push(ch); }
+      }
+      return out;
+    });
+  }
+  function pieceAtName(grid, name) { return grid[8 - Number(name[1])][name.charCodeAt(0) - 97]; }
+  function isWhitePiece(p) { return p === p.toUpperCase(); }
+  function pieceSVG(ch, extra) {
+    return '<svg class="piece ' + (isWhitePiece(ch) ? "pw" : "pb") + (extra ? " " + extra : "") +
+      '" viewBox="0 0 45 45">' + PIECES_SVG[ch.toLowerCase()] + "</svg>";
+  }
+  function targetsOf(from) {
+    var t = {};
+    if (!state) { return t; }
+    state.legal.forEach(function (m) { if (m.slice(0, 2) === from) { t[m.slice(2, 4)] = true; } });
+    return t;
+  }
+  function gameOver() { return timeout !== null || (state && state.status !== "ongoing"); }
+  function canMove() { return state && !busy && !gameOver() && state.turn === me; }
+  function sqXY(name) {
+    var f = name.charCodeAt(0) - 97, rk = Number(name[1]);
+    return { x: flipped ? 7 - f : f, y: flipped ? rk - 1 : 8 - rk };
+  }
+
+  function render() {
+    if (!state) { return; }
+    var grid = parseBoard(state.board);
+    var last = state.moves.length ? state.moves[state.moves.length - 1] : null;
+    var targets = sel ? targetsOf(sel) : {};
+    var kingSq = null;
+    if (state.check) {
+      var king = state.turn === "w" ? "K" : "k";
+      for (var rr = 0; rr < 8; rr++) for (var ff = 0; ff < 8; ff++) { if (grid[rr][ff] === king) { kingSq = FILES[ff] + (8 - rr); } }
+    }
+    var mineOK = canMove();
+    var html = "";
+    for (var i = 0; i < 8; i++) {
+      for (var j = 0; j < 8; j++) {
+        var r = flipped ? 7 - i : i, f = flipped ? 7 - j : j;
+        var name = FILES[f] + (8 - r);
+        var p = grid[r][f];
+        var cls = "sq " + (((r + f) % 2 === 0) ? "l" : "d");
+        if (last && (name === last.slice(0, 2) || name === last.slice(2, 4))) { cls += " last"; }
+        if (sel === name) { cls += " sel"; }
+        if (kingSq === name) { cls += " chk"; }
+        if (hint && (name === hint.slice(0, 2) || name === hint.slice(2, 4))) { cls += " hint"; }
+        if (targets[name] && p) { cls += " cap"; }
+        if (mineOK && p && (me === "w") === isWhitePiece(p)) { cls += " mine"; }
+        html += '<div class="' + cls + '" data-sq="' + name + '">';
+        if (targets[name]) { html += '<span class="mdot"></span>'; }
+        if (p) { html += pieceSVG(p); }
+        html += "</div>";
+      }
+    }
+    $("board").innerHTML = html;
+    renderCoords();
+    renderArrows();
+    renderCards(grid);
+    renderMoves();
+    renderStatus();
+    renderEval();
+    renderResult();
+    $("hintBtn").disabled = !canMove();
+    $("undo").disabled = busy || !undoPlan();
+    $("evalbar").className = "evalbar" + (flipped ? " flip" : "");
+  }
+
+  function renderCoords() {
+    var rk = "", fl = "";
+    for (var i = 0; i < 8; i++) {
+      rk += "<span>" + (flipped ? i + 1 : 8 - i) + "</span>";
+      fl += "<span>" + FILES[flipped ? 7 - i : i] + "</span>";
+    }
+    $("ranks").innerHTML = rk;
+    $("files").innerHTML = fl;
+  }
+
+  function renderArrows() {
+    var svg = $("arrows");
+    if (!hint) { svg.innerHTML = ""; return; }
+    var a = sqXY(hint.slice(0, 2)), b = sqXY(hint.slice(2, 4));
+    var x1 = a.x + .5, y1 = a.y + .5, x2 = b.x + .5, y2 = b.y + .5;
+    var dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy) || 1;
+    var ux = dx / len, uy = dy / len, head = .38;
+    var ex = x2 - ux * head, ey = y2 - uy * head;
+    var px = -uy, py = ux;
+    svg.innerHTML =
+      '<g opacity=".85" fill="#191816" stroke="none">' +
+      '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + ex + '" y2="' + ey + '" stroke="#191816" stroke-width=".17" stroke-linecap="round"/>' +
+      '<polygon points="' + x2 + "," + y2 + " " + (ex + px * .24) + "," + (ey + py * .24) + " " + (ex - px * .24) + "," + (ey - py * .24) + '"/></g>';
+  }
+
+  function fmt(ms) {
+    if (ms < 0) { ms = 0; }
+    var s = ms / 1000;
+    if (s < 10) { return "0:0" + s.toFixed(1); }
+    var m = Math.floor(s / 60), r = Math.floor(s % 60);
+    return m + ":" + (r < 10 ? "0" : "") + r;
+  }
+  function countsOf(grid) {
+    var c = { w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } };
+    grid.forEach(function (row) {
+      row.forEach(function (p) {
+        if (!p || p.toLowerCase() === "k") { return; }
+        c[isWhitePiece(p) ? "w" : "b"][p.toLowerCase()]++;
+      });
+    });
+    return c;
+  }
+  function material(c) { var s = 0; for (var k in VAL) { s += VAL[k] * c[k]; } return s; }
+  function renderCards(grid) {
+    var c = countsOf(grid);
+    var diff = material(c.w) - material(c.b);
+    var bottom = flipped ? "b" : "w", top = flipped ? "w" : "b";
+    $("topCard").innerHTML = cardHTML(top, c, diff);
+    $("botCard").innerHTML = cardHTML(bottom, c, diff);
+    renderClocks();
+  }
+  function cardHTML(color, c, diff) {
+    var other = color === "w" ? "b" : "w";
+    var isMe = color === me;
+    var caps = "";
+    ORDER.forEach(function (k) {
+      var n = Math.max(0, START[k] - c[other][k]);
+      if (n > 0) {
+        var ch = other === "w" ? k.toUpperCase() : k;
+        var g = "";
+        for (var i = 0; i < n; i++) { g += pieceSVG(ch); }
+        caps += '<span class="grp">' + g + "</span>";
+      }
+    });
+    var ahead = color === "w" ? diff : -diff;
+    if (ahead > 0) { caps += "<b>+" + ahead + "</b>"; }
+    var thinking = (!isMe && engineThinking) ? '<span class="think">думает…</span>' : "";
+    var av = isMe ? pieceSVG(me === "w" ? "K" : "k") : '<img src="/img/' + (opp === "neo" ? "neo" : "eye") + '.jpg" alt="">';
+    return '<div class="avatar">' + av + "</div>" +
+      '<div class="pinfo"><div class="pname">' + (isMe ? "Вы" : oppName()) + thinking + '</div><div class="caps">' + caps + "</div></div>" +
+      '<div class="clock' + (clockOn ? "" : " hidden") + '" data-clock="' + color + '"></div>';
+  }
+  function renderClocks() {
+    var els = document.querySelectorAll("[data-clock]");
+    for (var i = 0; i < els.length; i++) {
+      var col = els[i].getAttribute("data-clock");
+      els[i].textContent = fmt(clocks[col]);
+      var active = clockOn && state && !gameOver() && state.moves.length >= 1 && state.turn === col;
+      els[i].className = "clock" + (clockOn ? "" : " hidden") + (active ? " active" : "") + (clocks[col] < 10000 ? " low" : "");
+    }
+  }
+  function tick() {
+    var now = performance.now();
+    var dt = lastTick === null ? 0 : now - lastTick;
+    lastTick = now;
+    if (clockOn && state && !gameOver() && state.moves.length >= 1) {
+      clocks[state.turn] -= dt;
+      if (clocks[state.turn] <= 0) {
+        clocks[state.turn] = 0;
+        timeout = state.turn;
+        engineThinking = false;
+        beep(300, .3, .1);
+        if (opp === "grek") { voice(timeout === me ? "timeout.wav" : "playerwin.wav", 4, true); }
+        render();
+        return;
+      }
+    }
+    renderClocks();
+  }
+
+  /* ---------- SAN ---------- */
+  function san(uci, before, after) {
+    var grid = parseBoard(before.board);
+    var from = uci.slice(0, 2), to = uci.slice(2, 4), promo = uci[4];
+    var piece = pieceAtName(grid, from), pt = piece.toLowerCase();
+    var capture = pieceAtName(grid, to) !== "" || (pt === "p" && from[0] !== to[0]);
+    var s;
+    if (pt === "k" && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) {
+      s = to[0] === "g" ? "O-O" : "O-O-O";
+    } else if (pt === "p") {
+      s = capture ? from[0] + "x" + to : to;
+      if (promo) { s += "=" + promo.toUpperCase(); }
+    } else {
+      s = pt.toUpperCase();
+      var others = before.legal.filter(function (m) {
+        return m.slice(0, 2) !== from && m.slice(2, 4) === to && pieceAtName(grid, m.slice(0, 2)) === piece;
+      });
+      if (others.length) {
+        var sameFile = others.some(function (m) { return m[0] === from[0]; });
+        var sameRank = others.some(function (m) { return m[1] === from[1]; });
+        if (!sameFile) { s += from[0]; } else if (!sameRank) { s += from[1]; } else { s += from; }
+      }
+      if (capture) { s += "x"; }
+      s += to;
+    }
+    if (after) { if (after.status === "checkmate") { s += "#"; } else if (after.check) { s += "+"; } }
+    return s;
+  }
+  function renderMoves() {
+    var box = $("moves");
+    if (!state.moves.length) { box.innerHTML = '<span class="empty">Ходов пока нет</span>'; return; }
+    var h = "";
+    for (var i = 0; i < state.moves.length; i += 2) {
+      h += '<span class="n">' + (i / 2 + 1) + ".</span>";
+      var lastIdx = state.moves.length - 1;
+      h += '<span class="' + (i === lastIdx ? "cur" : "") + '">' + san(state.moves[i], states[i], states[i + 1]) + "</span>";
+      h += '<span class="' + (i + 1 === lastIdx ? "cur" : "") + '">' + (state.moves[i + 1] ? san(state.moves[i + 1], states[i + 1], states[i + 2]) : "") + "</span>";
+    }
+    box.innerHTML = h;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  /* ---------- трэш-ток и мем ---------- */
+  function renderTrash(data) {
+    var box = $("trashbox");
+    if (data && data.trash) {
+      box.textContent = "grek: " + data.trash;
+      box.hidden = false;
+      clearTimeout(window.__trashT);
+      window.__trashT = setTimeout(function () { box.hidden = true; }, 4500);
+    }
+  }
+  function showRookMeme(data) {
+    if (data && data.rook) {
+      var el = document.createElement("div");
+      el.className = "rookmeme";
+      el.textContent = data.rook;
+      document.body.appendChild(el);
+      /* на последнем ходу мем не должен съедать финальную фразу */
+      if (!gameOver()) { sayRook(); }
+      setTimeout(function () { el.remove(); }, 1600);
+    }
+  }
+
+  /* ---------- статус/итог ---------- */
+  function outcome() {
+    if (timeout !== null) {
+      var w = timeout === "w" ? "b" : "w";
+      return { winner: w, reason: "по времени" };
+    }
+    if (state.status === "checkmate") { return { winner: state.turn === "w" ? "b" : "w", reason: "мат" }; }
+    if (state.status === "stalemate") { return { winner: null, reason: "пат" }; }
+    if (state.status === "draw") { return { winner: null, reason: "повторение, правило 50 ходов или нет материала" }; }
+    return null;
+  }
+  function oppName() { return opp === "neo" ? "neo" : "grek"; }
+
+  function renderStatus() {
+    var o = gameOver() ? outcome() : null;
+    var t;
+    if (o) {
+      t = o.winner === null ? "Ничья" : (o.winner === me ? "Вы победили!" : "Победил " + oppName());
+    } else if (engineThinking) {
+      t = oppName() + " думает…";
+    } else if (busy) {
+      t = "Подсказка считается…";
+    } else {
+      t = state.turn === me ? "Ваш ход" : "Ход " + oppName();
+      if (state.check) { t += " — шах!"; }
+    }
+    $("status").textContent = t;
+    $("statusdot").className = "dotc" + (o ? " over" : (engineThinking || busy ? " eng" : ""));
+  }
+  function setEval(cp) { evalCp = cp; }
+  function renderEval() {
+    var cp = evalCp, mate = Math.abs(cp) > 90000;
+    var pct = mate ? (cp > 0 ? 100 : 0) : 100 / (1 + Math.exp(-cp / 400));
+    $("evalw").style.height = pct + "%";
+    var label;
+    if (mate) {
+      var n = Math.floor((100000 - Math.abs(cp) + 1) / 2);
+      label = "M" + Math.max(1, n);
+    } else {
+      label = (Math.abs(cp) / 100).toFixed(1);
+    }
+    var el = $("evallabel");
+    var whiteAhead = cp >= 0;
+    var atBottom = whiteAhead ? !flipped : flipped;
+    el.textContent = label;
+    el.className = "evallabel " + (atBottom ? "atbottom" : "attop") + (whiteAhead ? "" : " blackside");
+  }
+  function resultReason() {
+    if (timeout !== null) { return "timeout"; }
+    if (state.status === "checkmate") { return "mate"; }
+    if (state.status === "stalemate") { return "stalemate"; }
+    return "draw";
+  }
+  function saveGame() {
+    if (!state || savedGame === gameKey) { return; }
+    var o = outcome();
+    if (!o) { return; }
+    savedGame = gameKey;
+    var res = o.winner === null ? "draw" : (o.winner === me ? "win" : "loss");
+    var rec = {
+      id: String(gameKey), ts: Math.floor(Date.now() / 1000), color: me,
+      result: res, reason: resultReason(), tc: $("tc").value,
+      ems: Number($("ems").value) || 0, opp: opp, moves: state.moves.slice()
+    };
+    var local = loadLocal().filter(function (g) { return g.id !== rec.id; });
+    local.unshift(rec);
+    saveLocal(local.slice(0, 200));
+    cfg.then(function () {
+      if (hosted) { return; }
+      var q = "id=" + gameKey + "&ts=" + Math.floor(Date.now() / 1000) +
+        "&color=" + me + "&result=" + res + "&reason=" + resultReason() +
+        "&tc=" + $("tc").value + "&ems=" + $("ems").value +
+        "&opp=" + opp + "&moves=" + state.moves.join(",");
+      fetch("/api/save?" + q).catch(function () {});
+    });
+  }
+
+  /* ---------- архив и разбор ---------- */
+  function loadLocal() {
+    try {
+      var v = JSON.parse(load("archive", "[]"));
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+  function saveLocal(list) { store("archive", JSON.stringify(list)); }
+  function localGame(id) {
+    var all = loadLocal();
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].id) === String(id)) { return all[i]; }
+    }
+    return null;
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function fmtWhen(ts) {
+    if (!ts) { return "—"; }
+    var d = new Date(ts * 1000), p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear() + " · " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function movesWord(n) {
+    var m = Math.ceil(n / 2), a = m % 10, b = m % 100;
+    var w = (a === 1 && b !== 11) ? "ход" : (a >= 2 && a <= 4 && (b < 12 || b > 14)) ? "хода" : "ходов";
+    return m + " " + w;
+  }
+  function winnerText(result, color) {
+    if (result === "draw") { return "ничья"; }
+    var w = result === "win" ? color : (color === "w" ? "b" : "w");
+    return "победа " + (w === "w" ? "белых" : "чёрных");
+  }
+  function reasonText(r) {
+    return ({ mate: "мат", timeout: "флаг", stalemate: "пат", draw: "ничья", resign: "сдача" })[r] || r;
+  }
+  function tagText(t) {
+    return ({ best: "точно", good: "хорошо", inaccuracy: "неточность", mistake: "ошибка", blunder: "зевок" })[t] || t;
+  }
+  function eloFromAcpl(acpl) {
+    var elo = 2400 - 850 * Math.log(1 + acpl / 25);
+    return Math.max(400, Math.min(2400, Math.round(elo / 50) * 50));
+  }
+  function sheetHead(title, kicker) {
+    return '<div class="sheet-head"><div><div class="kicker2">' + esc(kicker || "Архив") + '</div><h2>' + esc(title) + '</h2></div>' +
+      '<button class="x" data-close aria-label="Закрыть">&times;</button></div>';
+  }
+  function closeArchive() {
+    $("archiveModal").hidden = true;
+    $("archiveSheet").innerHTML = "";
+  }
+  async function openArchive() {
+    $("archiveModal").hidden = false;
+    var sheet = $("archiveSheet");
+    sheet.innerHTML = sheetHead("Архив партий", "Сыгранные партии") + '<div class="loading">Читаю архив…</div>';
+    var games = loadLocal();
+    if (!hosted) {
+      try {
+        var r = await fetch("/games");
+        var server = await r.json();
+        var have = {};
+        games.forEach(function (g) { have[g.id] = 1; });
+        (server || []).forEach(function (g) { if (!have[g.id]) { games.push(g); } });
+      } catch (e) {
+        if (!games.length) {
+          sheet.innerHTML = sheetHead("Архив партий", "Сыгранные партии") +
+            '<p class="note" style="margin-top:20px">Движок не отвечает — архив недоступен.</p>' +
+            '<div class="ana-actions"><button class="btn-link" data-close>Закрыть</button></div>';
+          return;
+        }
+      }
+    }
+    games.sort(function (a, b) { return b.ts - a.ts; });
+    if (!games.length) {
+      sheet.innerHTML = sheetHead("Архив партий", "Сыгранные партии") +
+        '<p class="note" style="margin-top:20px">Пока пусто. Каждая законченная партия остаётся в архиве и открывается для разбора.</p>' +
+        '<div class="ana-actions"><button class="btn-link" data-close>Закрыть</button></div>';
+      return;
+    }
+    var rows = games.map(function (g) {
+      var out = g.result === "draw"
+        ? "<b>ничья</b>" + (g.reason === "stalemate" ? " · пат" : "")
+        : "<b>" + winnerText(g.result, g.color) + "</b> · " + reasonText(g.reason);
+      var plies = g.plies || (g.moves ? g.moves.length : 0);
+      return '<div class="grow">' +
+        '<div class="who">Против ' + (g.opp === "neo" ? "neo" : "grek") + ' <i>· ' + movesWord(plies) + " · " + esc(g.tc === "0" ? "без часов" : g.tc + " мин") + '</i></div>' +
+        '<div class="when">' + fmtWhen(g.ts) + '</div>' +
+        '<div class="out">' + out + '</div>' +
+        '<button class="btn-link" data-ana="' + esc(g.id) + '">Разбор</button>' +
+        '</div>';
+    }).join("");
+    sheet.innerHTML = sheetHead("Архив партий", "Сыгранные партии") + rows +
+      '<div class="ana-actions"><span class="note">' + games.length + ' сохранено</span>' +
+      '<button class="btn-link" data-close>Закрыть</button></div>';
+  }
+  function evalGraph(evals, color) {
+    var n = evals.length;
+    if (n < 2) { return ""; }
+    var sign = color === "b" ? -1 : 1;
+    var pts = evals.map(function (cp, i) {
+      var v = Math.max(-800, Math.min(800, cp * sign));
+      return ((i / (n - 1)) * 600).toFixed(1) + "," + (55 - (v / 800) * 49).toFixed(1);
+    }).join(" ");
+    return '<svg class="graph" viewBox="0 0 600 110" preserveAspectRatio="none" aria-hidden="true">' +
+      '<line x1="0" y1="55" x2="600" y2="55" stroke="#b3ab9a" stroke-width="1" stroke-dasharray="5 5"/>' +
+      '<polyline points="' + pts + '" fill="none" stroke="#191816" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+      '</svg>';
+  }
+  function renderAnalysis(a) {
+    var sheet = $("archiveSheet");
+    var rows = a.plies.filter(function (p) { return p.player; });
+    var list = rows.map(function (p) {
+      var alt = (p.tag !== "best" && p.bestSan) ? "лучше " + p.bestSan : "";
+      var loss = p.loss > 0 ? (p.loss >= 9000 ? "мат" : "−" + p.loss) : "";
+      return '<div class="ana-row">' +
+        '<span class="num">' + (Math.floor(p.i / 2) + 1) + '.</span>' +
+        '<span class="san">' + esc(p.san) + '</span>' +
+        '<span class="alt">' + esc(alt) + '</span>' +
+        '<span class="right"><span class="loss">' + loss + '</span>' +
+        '<span class="tag ' + p.tag + '">' + tagText(p.tag) + '</span></span>' +
+        '</div>';
+    }).join("");
+    sheet.innerHTML =
+      sheetHead("Партия против " + (a.opp === "neo" ? "neo" : "grek"), "Разбор · " + winnerText(a.result, a.color) + (a.result === "draw" && a.reason === "draw" ? "" : " · " + reasonText(a.reason))) +
+      '<div class="ana-head"><div><div class="kicker2">Точность игры</div>' +
+      '<div class="note" style="margin-top:8px">' + (a.color === "w" ? "вы играли белыми" : "вы играли чёрными") + '</div>' +
+      '<div class="elo-line">Средняя потеря <b>' + Math.round(a.acpl) + '</b> сп · <b>≈ ' + eloFromAcpl(a.acpl) + '</b> Elo' +
+      '<span>грубая оценка по одной партии, а не рейтинг</span></div></div>' +
+      '<div class="acc-num">' + Number(a.accuracy).toFixed(1) + '<span>из 100</span></div></div>' +
+      '<div class="stats">' +
+      '<div class="stat"><b>' + a.stats.best + '</b><span>точно</span></div>' +
+      '<div class="stat"><b>' + a.stats.good + '</b><span>хорошо</span></div>' +
+      '<div class="stat"><b>' + a.stats.inaccuracy + '</b><span>неточность</span></div>' +
+      '<div class="stat"><b>' + a.stats.mistake + '</b><span>ошибка</span></div>' +
+      '<div class="stat"><b>' + a.stats.blunder + '</b><span>зевок</span></div>' +
+      '</div>' +
+      evalGraph(a.evals, a.color) +
+      '<div class="ana-head2"><span>Ваши ходы</span><span>потеря в сантипешках</span></div>' +
+      '<div class="ana-list">' + (list || '<p class="note">Ходов не найдено.</p>') + '</div>' +
+      '<div class="ana-actions"><button class="btn-link" id="anaBack">← К архиву</button>' +
+      '<button class="btn-link" data-close>Закрыть</button></div>';
+  }
+  async function analyzeGame(id) {
+    var sheet = $("archiveSheet");
+    sheet.innerHTML = sheetHead("Разбор партии", "Движок пересматривает") +
+      '<div class="loading">Движок пересматривает партию… Это несколько секунд.</div>';
+    var url = "/analyze?id=" + encodeURIComponent(id);
+    var rec = localGame(id);
+    if (rec && rec.moves && rec.moves.length) {
+      url = "/analyze?color=" + rec.color + "&result=" + rec.result + "&reason=" + rec.reason +
+        "&opp=" + rec.opp + "&tc=" + rec.tc + "&ems=" + rec.ems +
+        "&moves=" + rec.moves.join(",");
+    }
+    try {
+      var r = await fetch(url);
+      var a = await r.json();
+      if (a.error) {
+        sheet.innerHTML = sheetHead("Разбор партии", "Не вышло") +
+          '<p class="note" style="margin-top:20px">Не удалось разобрать партию: ' + esc(a.error) + '.</p>' +
+          '<div class="ana-actions"><button class="btn-link" id="anaBack">← К архиву</button>' +
+          '<button class="btn-link" data-close>Закрыть</button></div>';
+        return;
+      }
+      renderAnalysis(a);
+    } catch (e) {
+      sheet.innerHTML = sheetHead("Разбор партии", "Не вышло") +
+        '<p class="note" style="margin-top:20px">Движок не отвечает.</p>' +
+        '<div class="ana-actions"><button class="btn-link" id="anaBack">← К архиву</button>' +
+        '<button class="btn-link" data-close>Закрыть</button></div>';
+    }
+  }
+  $("archiveModal").addEventListener("click", function (e) {
+    if (e.target === this || e.target.closest("[data-close]")) { closeArchive(); return; }
+    if (e.target.closest("#anaBack")) { openArchive(); return; }
+    var b = e.target.closest("[data-ana]");
+    if (b) { analyzeGame(b.getAttribute("data-ana")); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !$("archiveModal").hidden) { closeArchive(); }
+  });
+
+  function renderResult() {
+    var m = $("resultModal");
+    if (!gameOver()) { m.hidden = true; return; }
+    saveGame();
+    if (resultDismissed) { m.hidden = true; return; }
+    var o = outcome();
+    var engineWon = o.winner !== null && o.winner !== me;
+    $("resTitle").textContent = o.winner === null ? "Ничья" : (o.winner === me ? "Победа!" : "Поражение");
+    if (engineWon) {
+      $("resText").innerHTML = opp === "grek"
+        ? "В чём смысл человечества, остановившегося в развитии?<br>" +
+          "<small style='opacity:.6'>— пасхалка от Альтрона</small>"
+        : "neo просчитал эту партию точнее. Пока что.";
+    } else {
+      $("resText").textContent = opp === "neo" && o.winner === me
+        ? "neo пересчитал варианты — и сдался первым. Пока что."
+        : o.winner === null
+          ? o.reason.charAt(0).toUpperCase() + o.reason.slice(1)
+          : (o.winner === "w" ? "Белые" : "Чёрные") + " выиграли: " + o.reason;
+    }
+    if (resultSaid !== gameId) {
+      resultSaid = gameId;
+      /* при флаге финальную фразу уже сказал таймер */
+      if (opp === "grek" && timeout === null) {
+        if (engineWon) { voice("enginewin.wav", 4, true); }
+        else if (o.winner === me) { voice("playerwin.wav", 4, true); }
+      }
+    }
+    m.hidden = false;
+  }
+
+  /* ---------- ходы ---------- */
+  function pushState(s) {
+    var prev = state;
+    var wasCapture = prev && countPieces(prev.board) !== countPieces(s.board);
+    states.push(s);
+    state = s;
+    if (clockOn && prev && states.length - 1 >= 2) { clocks[prev.turn] += inc * 1000; }
+    if (s.check) { beep(720, .16, .1); } else if (wasCapture) { beep(230, .1, .12); } else { beep(440, .06, .09); }
+  }
+  function countPieces(b) { return b.replace(/[^A-Za-z]/g, "").length; }
+
+  function engineMs() {
+    if (clockOn) {
+      var rem = clocks[state.turn];
+      return Math.max(100, Math.min(15000, rem / 30 + inc * 800, rem * 0.4));
+    }
+    return Number($("ems").value);
+  }
+
+  async function engineTurn(id) {
+    engineThinking = true;
+    renderStatus(); renderCards(parseBoard(state.board));
+    var s = await api(state.moves, { engine: true, ms: engineMs() });
+    if (id !== gameId || gameOver()) { return; }
+    engineThinking = false;
+    pushState(s);
+    if (s.eval !== null && s.eval !== undefined) { setEval(s.eval); }
+    var captured = false;
+    if (s.moves.length >= 2) {
+      var prev = states[states.length - 2];
+      captured = !!prev && countPieces(prev.board) !== countPieces(s.board);
+    }
+    if (opp === "grek") {
+      renderTrash(s);
+      showRookMeme(s);
+      /* одна реплика на ход: шах > взятие > трэш-ток */
+      if (s.check && s.status === "ongoing") { voice(reactCheck(), 2); }
+      else if (captured) { voice(reactCapture(), 2); }
+      else { voice(s.voice, 1); }
+    }
+    render();
+  }
+
+  async function playerMove(uci) {
+    var id = gameId;
+    busy = true; sel = null; clearHint();
+    try {
+      var s = await api(state.moves.concat([uci]), {});
+      if (id !== gameId) { return; }
+      pushState(s);
+      renderTrash(s);
+      showRookMeme(s);
+      render();
+      if (s.status === "ongoing" && !gameOver()) { await engineTurn(id); }
+    } catch (e) { fail(e); return; }
+    if (id !== gameId) { return; }
+    busy = false; engineThinking = false;
+    render();
+  }
+
+  function tryMove(from, to) {
+    var cands = state.legal.filter(function (m) { return m.slice(0, 2) === from && m.slice(2, 4) === to; });
+    if (!cands.length) { return false; }
+    if (cands.length === 1) { playerMove(cands[0]); return true; }
+    openPromo(from, to);
+    return true;
+  }
+  function openPromo(from, to) {
+    promoPending = { from: from, to: to };
+    var h = "";
+    ["q", "r", "b", "n"].forEach(function (k) {
+      var ch = me === "w" ? k.toUpperCase() : k;
+      h += '<button data-p="' + k + '">' + pieceSVG(ch) + "</button>";
+    });
+    $("promo").innerHTML = h;
+    $("promoModal").hidden = false;
+  }
+  function closePromo() { promoPending = null; $("promoModal").hidden = true; }
+
+  /* ---------- мышь ---------- */
+  $("board").addEventListener("pointerdown", function (e) {
+    if (e.button !== undefined && e.button !== 0) { return; }
+    var sqEl = e.target.closest(".sq");
+    if (!sqEl || promoPending || !canMove()) { return; }
+    var name = sqEl.getAttribute("data-sq");
+    var grid = parseBoard(state.board);
+    if (sel && targetsOf(sel)[name]) { var from = sel; sel = null; if (!tryMove(from, name)) { render(); } else { render(); } return; }
+    var p = pieceAtName(grid, name);
+    if (p && (me === "w") === isWhitePiece(p) && Object.keys(targetsOf(name)).length) {
+      sel = name; render(); startDrag(e, name, p);
+    } else { sel = null; render(); }
+  });
+
+  function startDrag(e, name, p) {
+    var size = $("board").clientWidth / 8;
+    var ghost = document.createElement("div");
+    ghost.className = "ghost";
+    ghost.style.width = size + "px"; ghost.style.height = size + "px";
+    ghost.innerHTML = pieceSVG(p);
+    document.body.appendChild(ghost);
+    var srcEl = $("board").querySelector('[data-sq="' + name + '"] .piece');
+    drag = { from: name, ghost: ghost, size: size, moved: false, sx: e.clientX, sy: e.clientY, src: srcEl };
+    moveGhost(e);
+    window.addEventListener("pointermove", onDragMove);
+    window.addEventListener("pointerup", onDragEnd);
+    window.addEventListener("pointercancel", onDragEnd);
+  }
+  function moveGhost(e) {
+    drag.ghost.style.left = (e.clientX - drag.size / 2) + "px";
+    drag.ghost.style.top = (e.clientY - drag.size / 2) + "px";
+  }
+  function onDragMove(e) {
+    if (!drag) { return; }
+    if (!drag.moved && Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 5) {
+      drag.moved = true;
+      if (drag.src) { drag.src.classList.add("dragsrc"); }
+    }
+    moveGhost(e);
+  }
+  function onDragEnd(e) {
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", onDragEnd);
+    window.removeEventListener("pointercancel", onDragEnd);
+    if (!drag) { return; }
+    var d = drag; drag = null;
+    d.ghost.remove();
+    if (!d.moved) { return; }
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var sqEl = el && el.closest ? el.closest(".sq") : null;
+    var to = sqEl ? sqEl.getAttribute("data-sq") : null;
+    if (to && to !== d.from && targetsOf(d.from)[to]) { sel = null; tryMove(d.from, to); render(); }
+    else { render(); }
+  }
+
+  $("promo").addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b || !promoPending) { return; }
+    var uci = promoPending.from + promoPending.to + b.getAttribute("data-p");
+    closePromo();
+    playerMove(uci);
+  });
+  $("promoModal").addEventListener("click", function (e) {
+    if (e.target === $("promoModal")) { closePromo(); render(); }
+  });
+
+  /* ---------- подсказка/отмена/новая ---------- */
+  function clearHint() { hint = null; if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; } }
+  async function getHint() {
+    if (!canMove()) { return; }
+    var id = gameId;
+    busy = true; render();
+    try {
+      var s = await api(state.moves, { hint: true, ms: 1500 });
+      if (id !== gameId) { return; }
+      if (s.hint) {
+        hint = s.hint;
+        if (hintTimer) { clearTimeout(hintTimer); }
+        hintTimer = setTimeout(function () { hint = null; render(); }, 6000);
+      }
+      if (s.eval !== null && s.eval !== undefined) { setEval(s.eval); }
+    } catch (e) { fail(e); return; }
+    busy = false; render();
+  }
+  function undoPlan() {
+    if (!state || states.length < 2) { return null; }
+    var k = state.turn === me ? 2 : 1;
+    var keep = state.moves.length - k;
+    if (keep < (me === "b" ? 1 : 0)) { return null; }
+    return k;
+  }
+  function undo() {
+    if (busy) { return; }
+    var k = undoPlan();
+    if (!k) { return; }
+    gameId++;
+    savedGame = -1;
+    gameKey = Date.now();
+    states = states.slice(0, states.length - k);
+    state = states[states.length - 1];
+    sel = null; clearHint(); timeout = null; resultDismissed = false; engineThinking = false;
+    render();
+  }
+
+  function parseTC(v) {
+    if (v === "0") { return { base: 0, inc: 0 }; }
+    var p = v.split("+");
+    return { base: Number(p[0]) * 60000, inc: Number(p[1]) };
+  }
+
+  async function newGame() {
+    var id = ++gameId;
+    opp = $("opp").value === "neo" ? "neo" : "grek";
+    gameKey = Date.now();
+    savedGame = -1;
+    document.title = "Шахматы против " + oppName();
+    $("brandCard").className = "brand" + (opp === "neo" ? " neo" : "");
+    $("brandName").textContent = oppName();
+    $("brandSub").textContent = opp === "neo" ? "младшая сеть · ≈ 1300" : "шахматный движок · ≈ 2300";
+    var cv = $("color").value;
+    me = cv === "r" ? (Math.random() < 0.5 ? "w" : "b") : cv;
+    flipped = me === "b";
+    var tc = parseTC($("tc").value);
+    clockOn = tc.base > 0; inc = tc.inc;
+    clocks = { w: tc.base, b: tc.base };
+    lastTick = null; timeout = null; resultDismissed = false;
+    sel = null; clearHint(); closePromo();
+    evalCp = 0; engineThinking = false;
+    busy = true;
+    try {
+      var s = await api([], {});
+      if (id !== gameId) { return; }
+      states = [s]; state = s;
+      render();
+      if (opp === "grek") { voice("newgame.wav", 4, true); }
+      if (me === "b") { await engineTurn(id); }
+    } catch (e) { fail(e); return; }
+    if (id !== gameId) { return; }
+    busy = false; engineThinking = false;
+    render();
+  }
+
+  function fail(e) {
+    busy = false; engineThinking = false;
+    $("status").textContent = "Нет связи с движком: " + e.message;
+  }
+
+  /* ---------- настройки/старт ---------- */
+  $("new").addEventListener("click", newGame);
+  $("archiveBtn").addEventListener("click", openArchive);
+  $("opp").addEventListener("change", function () { store("opp", $("opp").value); newGame(); });
+  $("resNew").addEventListener("click", newGame);
+  $("resClose").addEventListener("click", function () { resultDismissed = true; render(); });
+  $("undo").addEventListener("click", undo);
+  $("hintBtn").addEventListener("click", getHint);
+  $("flip").addEventListener("click", function () { flipped = !flipped; render(); });
+  $("color").addEventListener("change", newGame);
+  $("tc").addEventListener("change", function () { store("tc", $("tc").value); newGame(); });
+  $("ems").addEventListener("change", function () { store("ems", $("ems").value); });
+  $("theme").addEventListener("change", function () {
+    document.documentElement.setAttribute("data-theme", $("theme").value);
+    store("theme3", $("theme").value);
+  });
+  $("sound").addEventListener("change", function () { soundOn = $("sound").checked; store("sound", soundOn ? "1" : "0"); });
+  $("voice").addEventListener("change", function () {
+    voiceOn = $("voice").checked;
+    store("voice", voiceOn ? "1" : "0");
+    if (!voiceOn) { stopVoice(); }
+  });
+
+  $("theme").value = load("theme3", "marble");
+  if (!$("theme").value) { $("theme").value = "marble"; }
+  document.documentElement.setAttribute("data-theme", $("theme").value);
+  $("tc").value = load("tc", "0");
+  $("opp").value = load("opp", "grek");
+  $("ems").value = load("ems", "1000");
+  soundOn = load("sound", "1") === "1";
+  $("sound").checked = soundOn;
+  voiceOn = load("voice", "1") === "1";
+  $("voice").checked = voiceOn;
+
+  $("brandIcon").innerHTML = pieceSVG("N");
+  var MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+  var now = new Date();
+  $("mastMeta").innerHTML = "<b>" + now.getDate() + " " + MONTHS[now.getMonth()] + " " + now.getFullYear() + "</b>" +
+    "<span>движки grek и neo · без внешних сервисов</span>";
+  setInterval(tick, 100);
+  newGame();
+})();
+</script>
+</body>
+</html>
