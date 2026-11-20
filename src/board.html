@@ -40,7 +40,7 @@ body {
 }
 
 /* ---------- шапка-журнал ---------- */
-.mast { position: relative; background: #151413 url("/img/bg.jpg") center 42% / cover no-repeat; }
+.mast { position: relative; background: #151413 url("/img/bg.jpg") 62% 35% / cover no-repeat; }
 .mast::after {
   content: "";
   position: absolute; inset: 0;
@@ -286,6 +286,11 @@ body {
   background:
     linear-gradient(180deg, rgba(10, 9, 8, .06) 0%, rgba(10, 9, 8, .42) 46%, rgba(10, 9, 8, .82) 100%),
     url("/img/neo.jpg") 50% 22% / cover no-repeat;
+}
+.brand.karmen {
+  background:
+    linear-gradient(180deg, rgba(10, 9, 8, .06) 0%, rgba(10, 9, 8, .42) 46%, rgba(10, 9, 8, .82) 100%),
+    url("/img/karmen.jpg") 50% 42% / cover no-repeat;
 }
 h1 { margin: 0; font: 600 26px/1 Georgia, "Times New Roman", serif; letter-spacing: .5px; color: #f5f2ea; }
 .sub { color: rgba(245, 242, 234, .74); font-size: 10px; margin-top: 4px; letter-spacing: .18em; text-transform: uppercase; }
@@ -539,7 +544,7 @@ button.primary:hover:not(:disabled) { background: #2f2c27; border-color: #2f2c27
     <div>
       <div class="kicker">Шахматы · движок · один на один</div>
       <h1 class="headline">Партия против машины</h1>
-      <p class="lede">grek считает быстрее, чем вы сомневаетесь. neo ошибается — но реже, чем кажется.</p>
+      <p class="lede">grek считает быстрее, чем вы сомневаетесь. neo ошибается — но реже, чем кажется. karmen идёт в атаку, не дожидаясь повода.</p>
     </div>
     <div class="mast-meta" id="mastMeta"></div>
   </div>
@@ -577,6 +582,7 @@ button.primary:hover:not(:disabled) { background: #2f2c27; border-color: #2f2c27
       <label class="row">Соперник
         <select id="opp">
           <option value="grek">grek · сильный</option>
+          <option value="karmen">karmen · средняя</option>
           <option value="neo">neo · слабее</option>
         </select>
       </label>
@@ -714,6 +720,7 @@ const PIECES_SVG = {
   var voiceStart = 0;
   var voiceEl = new Audio();
   voiceEl.preload = "auto";
+  voiceEl.volume = 0.55;
   voiceEl.onended = voiceEl.onerror = function () { voicePlaying = false; voicePri = 0; };
 
   function voice(file, pri, force) {
@@ -898,7 +905,7 @@ const PIECES_SVG = {
     var ahead = color === "w" ? diff : -diff;
     if (ahead > 0) { caps += "<b>+" + ahead + "</b>"; }
     var thinking = (!isMe && engineThinking) ? '<span class="think">думает…</span>' : "";
-    var av = isMe ? pieceSVG(me === "w" ? "K" : "k") : '<img src="/img/' + (opp === "neo" ? "neo" : "eye") + '.jpg" alt="">';
+    var av = isMe ? pieceSVG(me === "w" ? "K" : "k") : '<img src="/img/' + (opp === "neo" ? "neo" : opp === "karmen" ? "karmen" : "eye") + '.jpg" alt="">';
     return '<div class="avatar">' + av + "</div>" +
       '<div class="pinfo"><div class="pname">' + (isMe ? "Вы" : oppName()) + thinking + '</div><div class="caps">' + caps + "</div></div>" +
       '<div class="clock' + (clockOn ? "" : " hidden") + '" data-clock="' + color + '"></div>';
@@ -1006,7 +1013,7 @@ const PIECES_SVG = {
     if (state.status === "draw") { return { winner: null, reason: "повторение, правило 50 ходов или нет материала" }; }
     return null;
   }
-  function oppName() { return opp === "neo" ? "neo" : "grek"; }
+  function oppName() { return opp === "neo" || opp === "karmen" ? opp : "grek"; }
 
   function renderStatus() {
     var o = gameOver() ? outcome() : null;
@@ -1073,6 +1080,7 @@ const PIECES_SVG = {
   }
 
   /* ---------- архив и разбор ---------- */
+  function oppLabel(v) { return v === "neo" || v === "karmen" ? v : "grek"; }
   function loadLocal() {
     try {
       var v = JSON.parse(load("archive", "[]"));
@@ -1157,7 +1165,7 @@ const PIECES_SVG = {
         : "<b>" + winnerText(g.result, g.color) + "</b> · " + reasonText(g.reason);
       var plies = g.plies || (g.moves ? g.moves.length : 0);
       return '<div class="grow">' +
-        '<div class="who">Против ' + (g.opp === "neo" ? "neo" : "grek") + ' <i>· ' + movesWord(plies) + " · " + esc(g.tc === "0" ? "без часов" : g.tc + " мин") + '</i></div>' +
+        '<div class="who">Против ' + oppLabel(g.opp) + ' <i>· ' + movesWord(plies) + " · " + esc(g.tc === "0" ? "без часов" : g.tc + " мин") + '</i></div>' +
         '<div class="when">' + fmtWhen(g.ts) + '</div>' +
         '<div class="out">' + out + '</div>' +
         '<button class="btn-link" data-ana="' + esc(g.id) + '">Разбор</button>' +
@@ -1195,7 +1203,7 @@ const PIECES_SVG = {
         '</div>';
     }).join("");
     sheet.innerHTML =
-      sheetHead("Партия против " + (a.opp === "neo" ? "neo" : "grek"), "Разбор · " + winnerText(a.result, a.color) + (a.result === "draw" && a.reason === "draw" ? "" : " · " + reasonText(a.reason))) +
+      sheetHead("Партия против " + oppLabel(a.opp), "Разбор · " + winnerText(a.result, a.color) + (a.result === "draw" && a.reason === "draw" ? "" : " · " + reasonText(a.reason))) +
       '<div class="ana-head"><div><div class="kicker2">Точность игры</div>' +
       '<div class="note" style="margin-top:8px">' + (a.color === "w" ? "вы играли белыми" : "вы играли чёрными") + '</div>' +
       '<div class="elo-line">Средняя потеря <b>' + Math.round(a.acpl) + '</b> сп · <b>≈ ' + eloFromAcpl(a.acpl) + '</b> Elo' +
@@ -1265,11 +1273,15 @@ const PIECES_SVG = {
       $("resText").innerHTML = opp === "grek"
         ? "В чём смысл человечества, остановившегося в развитии?<br>" +
           "<small style='opacity:.6'>— пасхалка от Альтрона</small>"
-        : "neo просчитал эту партию точнее. Пока что.";
+        : opp === "karmen"
+          ? "karmen довела атаку до конца. В этот раз."
+          : "neo просчитал эту партию точнее. Пока что.";
     } else {
       $("resText").textContent = opp === "neo" && o.winner === me
         ? "neo пересчитал варианты — и сдался первым. Пока что."
-        : o.winner === null
+        : opp === "karmen" && o.winner === me
+          ? "karmen атаковала до последнего — и сдалась."
+          : o.winner === null
           ? o.reason.charAt(0).toUpperCase() + o.reason.slice(1)
           : (o.winner === "w" ? "Белые" : "Чёрные") + " выиграли: " + o.reason;
     }
@@ -1475,13 +1487,16 @@ const PIECES_SVG = {
 
   async function newGame() {
     var id = ++gameId;
-    opp = $("opp").value === "neo" ? "neo" : "grek";
+    opp = $("opp").value;
+    if (opp !== "neo" && opp !== "karmen") { opp = "grek"; }
     gameKey = Date.now();
     savedGame = -1;
     document.title = "Шахматы против " + oppName();
-    $("brandCard").className = "brand" + (opp === "neo" ? " neo" : "");
+    $("brandCard").className = "brand" + (opp === "grek" ? "" : " " + opp);
     $("brandName").textContent = oppName();
-    $("brandSub").textContent = opp === "neo" ? "младшая сеть · ≈ 1300" : "шахматный движок · ≈ 2300";
+    $("brandSub").textContent = opp === "neo" ? "младшая сеть · ≈ 1300"
+      : opp === "karmen" ? "атакующая сеть · ≈ 1700"
+      : "шахматный движок · ≈ 2300";
     var cv = $("color").value;
     me = cv === "r" ? (Math.random() < 0.5 ? "w" : "b") : cv;
     flipped = me === "b";
@@ -1548,7 +1563,7 @@ const PIECES_SVG = {
   var MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
   var now = new Date();
   $("mastMeta").innerHTML = "<b>" + now.getDate() + " " + MONTHS[now.getMonth()] + " " + now.getFullYear() + "</b>" +
-    "<span>движки grek и neo · без внешних сервисов</span>";
+    "<span>движки grek, karmen и neo · без внешних сервисов</span>";
   setInterval(tick, 100);
   newGame();
 })();

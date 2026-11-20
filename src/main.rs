@@ -720,6 +720,14 @@ fn state_json(
     )
 }
 
+fn norm_opp(v: &str) -> &'static str {
+    match v {
+        "neo" => "neo",
+        "karmen" => "karmen",
+        _ => "grek",
+    }
+}
+
 fn api(search: &mut Search, query: &str) -> String {
     let mut moves_param = "";
     let mut ms: u64 = 1000;
@@ -733,7 +741,7 @@ fn api(search: &mut Search, query: &str) -> String {
                 "ms" => ms = v.parse().unwrap_or(1000),
                 "engine" => engine = v == "1",
                 "hint" => want_hint = v == "1",
-                "opp" => opp = if v == "neo" { "neo" } else { "grek" },
+                "opp" => opp = norm_opp(v),
                 _ => {}
             }
         }
@@ -758,11 +766,20 @@ fn api(search: &mut Search, query: &str) -> String {
     if ongoing && (engine || want_hint) {
         let stm = board.side_to_move();
         let is_rook_origin = |b: &Board, m: Move| b.piece_on(m.from) == Some(Piece::Rook);
-        let neo = opp == "neo" && engine;
-        if neo {
+        if opp == "neo" && engine {
             if let Some((m, white_eval)) = neo_pick(search, &board, &path) {
                 eval = Some(white_eval);
                 depth = 3;
+                let s = display_uci_move(&board, m).to_string();
+                board.play(m);
+                path.push(board.hash());
+                moves_s.push(s.clone());
+                engine_move = Some(s);
+            }
+        } else if opp == "karmen" && engine {
+            if let Some((m, white_eval)) = karmen_pick(search, &board, &path) {
+                eval = Some(white_eval);
+                depth = 5;
                 let s = display_uci_move(&board, m).to_string();
                 board.play(m);
                 path.push(board.hash());
@@ -843,8 +860,59 @@ fn neo_pick(search: &mut Search, board: &Board, path: &[u64]) -> Option<(Move, i
     Some((scored[idx].0, scored[idx].1))
 }
 
-fn rand64() -> u64 {
-    let mut s = std::time::SystemTime::now()
+/// karmen: ≈1700 — считает глубже neo и ошибается реже,
+/// но тянется к взятиям и шахам.
+fn karmen_pick(search: &mut Search, board: &Board, path: &[u64]) -> Option<(Move, i32)> {
+    let legal = legal_moves(board);
+    if legal.is_empty() {
+        return None;
+    }
+    let was_quiet = search.quiet;
+    search.quiet = true;
+    let mut scored: Vec<(Move, i32, i32)> = Vec::with_capacity(legal.len());
+    for &m in &legal {
+        let capture = board.colors(!board.side_to_move()).has(m.to);
+        let mut child = board.clone();
+        child.play(m);
+        let gives_check = !child.checkers().is_empty();
+        let mut cpath = path.to_vec();
+        cpath.push(child.hash());
+        let (white_eval, root_score) = if legal_moves(&child).is_empty() {
+            if child.checkers().is_empty() {
+                (0, 0)
+            } else if board.side_to_move() == Color::White {
+                (MATE - 50, MATE - 50)
+            } else {
+                (-MATE + 50, MATE - 50)
+            }
+        } else {
+            match search.think(&child, &cpath, Duration::from_millis(60), 5) {
+                Some(_) => {
+                    let sc = search.last_score;
+                    let white = if child.side_to_move() == Color::White { sc } else { -sc };
+                    (white, -sc)
+                }
+                None => (0, 0),
+            }
+        };
+        let aggression = (if capture { 25 } else { 0 }) + (if gives_check { 15 } else { 0 });
+        scored.push((m, white_eval, root_score + aggression));
+    }
+    search.quiet = was_quiet;
+    scored.sort_by(|a, b| b.2.cmp(&a.2));
+
+    let seed = rand64();
+    let rnd = ((seed >> 11) % 1_000_003) as f64 / 1_000_003.0;
+    let max_rank = scored.len().saturating_sub(1).min(2);
+    let idx = if max_rank > 0 && rnd < 0.08 {
+        1 + ((seed >> 8) as usize) % max_rank
+    } else {
+        0
+    };
+    Some((scored[idx].0, scored[idx].1))
+}
+
+fn rand64() -> u64 {    let mut s = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0x2545_F491_4F6C_DD1D);
@@ -1034,7 +1102,7 @@ fn save_game(query: &str) -> String {
     }
     let ts: u64 = s("ts").parse().unwrap_or(0);
     let ems: u64 = s("ems").parse().unwrap_or(0);
-    let opp = if opp == "neo" { "neo" } else { "grek" };
+    let opp = norm_opp(&opp);
     let line = format!(
         "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
         id, ts, color, result, reason, tc, ems, opp, mv.join(" ")
@@ -1175,7 +1243,7 @@ fn inline_game(map: &std::collections::HashMap<String, String>) -> Option<SavedG
         reason: reason.to_string(),
         tc: map.get("tc").cloned().unwrap_or_default(),
         ems: map.get("ems").and_then(|s| s.parse().ok()).unwrap_or(0),
-        opp: if map.get("opp").map(|s| s == "neo").unwrap_or(false) { "neo".to_string() } else { "grek".to_string() },
+        opp: norm_opp(map.get("opp").map(|s| s.as_str()).unwrap_or("grek")).to_string(),
         moves,
     })
 }
